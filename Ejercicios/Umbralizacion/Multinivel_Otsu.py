@@ -46,13 +46,16 @@ for Umbral in range(1,255):
          Coeff_list=np.append(Coeff_list,Coef)
 
 
+
+# plt.plot(Coeff_list)
+# plt.show()
     
+Im_Threshold=cv2.threshold(Test,np.argmax(Coeff_list),255,cv2.THRESH_BINARY)
 
+plt.figure(1)
+plt.subplot(232), plt.plot(Coeff_list), plt.title('Curva de coeficientes')
+plt.subplot(234), plt.imshow(Test, cmap=plt.cm.gray), plt.title('Original')
+plt.subplot(236), plt.imshow(Im_Threshold[1], cmap=plt.cm.gray), plt.title('Best Threshold')
 
-
-
-
-
-
-plt.plot(Coeff_list)
+plt.subplots_adjust(top=0.95, bottom=0.05, left=0.10, right=0.95, hspace=0, wspace=0.8)
 plt.show()
