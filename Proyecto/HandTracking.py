@@ -155,8 +155,7 @@ textDefects(Mano, count_defects,debug_var = False)
 all_image_left = np.hstack((drawing_left, Mano))
    
 
+cv2.namedWindow("Full Frame", cv2.WINDOW_NORMAL) 
 cv2.imshow("Full Frame", Mano)
-
-
 cv2.waitKey(0)
 cv2.destroyAllWindows()
