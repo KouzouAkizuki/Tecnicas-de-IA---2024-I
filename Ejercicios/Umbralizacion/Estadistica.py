@@ -47,6 +47,7 @@ Test[np.logical_and(Test>(mean+1),Test<b)]=mean_val2
 plt.stem(cv2.calcHist([Test],[0],None,[2**8],[0,2**8]))
 plt.show()
 
+cv2.namedWindow('Test', cv2.WINDOW_NORMAL)
 cv2.imshow('Test',Test)
 
 cv2.waitKey(0)
