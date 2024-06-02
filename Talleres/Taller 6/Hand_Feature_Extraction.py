@@ -1,4 +1,4 @@
-# Librerías
+# Librerias
 import cv2
 from skimage import feature, filters
 from scipy import signal
@@ -10,11 +10,10 @@ import csv
 import os
 
 
-featuresVector = ['Numero de dedos',
-                  'Ángulo pulgar', 'Ángulo indice', 'Ángulo corazón', 'Ángulo anular', 'Ángulo meñique',
-                  'Ancho pulgar', 'Ancho indice', 'Ancho corazón', 'Ancho anular', 'Ancho meñique',
-                  'Pulgar extendido', 'Indice extendido', 'Corazón extendido', 'Anular extendido', 'Meñique extendido',
-                  'Pulgar contraído', 'Indice contraído', 'Corazón contraído', 'Anular contraído', 'Meñique contraído',
+featuresVector = ['Numero de dedos', 'Angulo indice', 'Angulo corazon', 'Angulo anular', 'Angulo menique',
+                  'Ancho pulgar', 'Ancho indice', 'Ancho corazon', 'Ancho anular', 'Ancho menique',
+                  'Pulgar extendido', 'Indice extendido', 'Corazon extendido', 'Anular extendido', 'Menique extendido',
+                  'Pulgar contraido', 'Indice contraido', 'Corazon contraido', 'Anular contraido', 'Menique contraido',
                   'Hu_1', 'Hu_2', 'Hu_3', 'Hu_4', 'Hu_5', 'Hu_6', 'Hu_7', 'Redondez', 'Compacidad','Clase']
 
 # Funciones
@@ -22,7 +21,7 @@ def HSV(img): # Cambio de espacio de color
     return (cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
 
 def blurImg(img): # Suavizado del histograma y escala de grises
-    #Se suaviza el histograma para eliminar mínimos locales
+    #Se suaviza el histograma para eliminar minimos locales
     blur = cv2.GaussianBlur(HSV(img), (3,3), 0)
     return cv2.cvtColor(blur, cv2.COLOR_BGR2GRAY)
 
@@ -30,7 +29,7 @@ def otsu(imgBlur): #Calculo del umbral por otsu
     #Calculo del brillo de la imagen
     y,x = imgBlur.shape[:2]
     brillo = np.sum(imgBlur)/(x*y)
-    #La mano será un máximo global, para garantizar su aparición se usa umbral binario
+    #La mano serA un mAximo global, para garantizar su aparicion se usa umbral binario
     tre, otsu = cv2.threshold(imgBlur,0,255,cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     #Inversion del umbral en dado caso que el brillo de la imagen sea mayor a 110
@@ -47,7 +46,7 @@ def edge(otsu): # Bordes
     c_Var = c_Var[0] if len(c_Var) == 2 else c_Var[1]
     return max(c_Var, key = cv2.contourArea)
         
-def segmentation(imgBlur, imgEdge): # Segmentación
+def segmentation(imgBlur, imgEdge): # Segmentacion
     #Obtener el contorno y su version rellena sin borde
     Contorno_Fill   = np.zeros_like(imgBlur)
     Contorno        = np.zeros_like(imgBlur)
@@ -55,10 +54,10 @@ def segmentation(imgBlur, imgEdge): # Segmentación
     cv2.drawContours(Contorno, [imgEdge], 0, (255,255,255), 3)
     Contorno_Fill = cv2.bitwise_and(cv2.bitwise_not(Contorno),Contorno_Fill)
 
-    #Segmentación de la imagen
+    #Segmentacion de la imagen
     return cv2.bitwise_and(imgBlur, Contorno_Fill)
 
-def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras características
+def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtencion 21 primeras caracteristicas
     y,x=imgBlur.shape[:2]
     #Filtro Canny
     Edge = feature.canny(imgMasked,sigma = 1).astype(np.uint8)
@@ -102,7 +101,7 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
     for i in range(0,len(Radial_Sample)):
             Radial_Sample[i] = Contorno_Fill[Index_y[i]][Index_x[i]]
 
-    #Ajuste para comenzar el arreglo en el primer punto mínimo
+    #Ajuste para comenzar el arreglo en el primer punto minimo
     Shift = np.argmin(Radial_Sample)
     Radial_Sample = np.roll(Radial_Sample,-Shift)
     Radial_Sample[-1] = 0
@@ -201,7 +200,7 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
     R_DT_Aux = np.max(D_Transform_Aux)
     Coor_DT_Aux = (np.argmax(D_Transform_Aux)%x,np.argmax(D_Transform_Aux)//x)
 
-    #Segmentación de los dedos compleja
+    #Segmentacion de los dedos compleja
     tol = 0.2
     if(not(np.abs(Coor_DT_1[0]-Coor_DT_Aux[0])/Coor_DT_1[0]<tol and np.abs(Coor_DT_1[1]-Coor_DT_Aux[1])/Coor_DT_1[1]<tol) and len(Peak_Center)<6):
             #Umbralizar para segmentar palma y dedos
@@ -227,7 +226,7 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
             Dedos_1 = cv2.dilate(Dedos_1, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(10,10)), iterations = 10)
             _,Dedos_1 = cv2.threshold((Dedos_1*255/np.max(Dedos_1)).astype(np.uint8),80,255,cv2.THRESH_BINARY)
 
-            #Crear un muestreo de n puntos con el circulo mascara respecto la imagen original, lo cual dará indicios de en que lugar se encuentran los dedos
+            #Crear un muestreo de n puntos con el circulo mascara respecto la imagen original, lo cual darA indicios de en que lugar se encuentran los dedos
             Radial_Sample_2 = np.zeros_like(Angle)
             Index_y_2 = (int(R_DT_1*0.9)*np.cos(Angle*np.pi/180)+Coor_DT_1[1]).astype(int)
             Index_x_2 = (int(R_DT_1*0.9)*np.sin(Angle*np.pi/180)+Coor_DT_1[0]).astype(int)
@@ -235,7 +234,7 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
             for i in range(0,len(Radial_Sample_2)):
                     Radial_Sample_2[i] = Dedos_1[Index_y_2[i]][Index_x_2[i]]
 
-            #Ajuste para comenzar el arreglo en el primer punto mínimo
+            #Ajuste para comenzar el arreglo en el primer punto minimo
             Radial_Sample_2[-1] = 0
 
             #Realizar la transformada de distancia para identificar el punto central de los dedos y palma, ademas de su anchura
@@ -244,7 +243,7 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
             D_T_Samples_2_C = np.argmax(D_Transform_Samples_2).astype(int)
 
 
-            #Ajustar los arreglos para que siempre empiecen con el punto máximo, correspondiente a la palma
+            #Ajustar los arreglos para que siempre empiecen con el punto mAximo, correspondiente a la palma
             D_Transform_Samples_2 = D_Transform_Samples_2.flatten()
 
             #Encontrar el indice del circulo en el que se encuentran los dedos y la palma, también su radio
@@ -290,8 +289,9 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
     #Indices para ordenar los dedos 
     Sort_Index = np.argsort(Angle_All)
 
-    #Ordenar los arreglos de información en base al orden de los dedos
+    #Ordenar los arreglos de informacion en base al orden de los dedos
     Angle_All = np.sort(Angle_All)
+
     FingerSize_All = FingerSize_All[Sort_Index]
     FingerSize_Ext_All = FingerSize_Ext_All[Sort_Index]
     FingerSize_Inner_All = FingerSize_Inner_All[Sort_Index]
@@ -300,40 +300,40 @@ def features21th(imgMasked, imgBlur, imgEdge, vector):# Obtención 21 primeras c
     vector[0] = len(Angle_All)
 
     #Angulo relativo de los dedos (Grados °)
-    vector[1:1+len(Angle_All)] = Angle_All
+    vector[1:len(Angle_All)] = Angle_All[1:]
 
     #Ancho de los dedos normalizado
-    vector[6:6+len(FingerSize_All)] = FingerSize_All
+    vector[5:5+len(FingerSize_All)] = FingerSize_All
 
-    #Tamaño de los dedos interno normalizado
-    vector[11:11+len(FingerSize_Inner_All)] = FingerSize_Inner_All
+    #Tamano de los dedos interno normalizado
+    vector[10:10+len(FingerSize_Inner_All)] = FingerSize_Inner_All
 
-    #Tamaño de los dedos externo normalizado
-    vector[16:16+len(FingerSize_Ext_All)] = FingerSize_Ext_All
+    #Tamano de los dedos externo normalizado
+    vector[15:15+len(FingerSize_Ext_All)] = FingerSize_Ext_All
 
 def HUMoments(imgEdge, vector): # Momentos de Hu
     HuMoments =cv2.HuMoments(cv2.moments(imgEdge))
     idx = 0
     for moment in HuMoments:
-        vector[21 + idx] = moment[0]
+        vector[20 + idx] = moment[0]
         idx += 1
 
-def getFeatures(img): # Vector de características
+def getFeatures(img): # Vector de caracteristicas
     imgBlur = blurImg(img) # Suavizado del histograma
     imgOtsu = otsu(imgBlur) # Obtencion del umbral por otsu
     imgEdge = edge(imgOtsu) # Obtener borde
     perimeter = cv2.arcLength(imgEdge, 1) # Perimetro
     area = cv2.contourArea(imgEdge) # Area
-    imgMasked = segmentation(imgBlur, imgEdge) # Segmentación de la imagen
-    features = np.zeros(30).astype(float) # Vector 1x30
-    features21th(imgMasked, imgBlur, imgEdge, features) # Extracción de las 21 primeras características
+    imgMasked = segmentation(imgBlur, imgEdge) # Segmentacion de la imagen
+    features = np.zeros(29).astype(float) # Vector 1x29
+    features21th(imgMasked, imgBlur, imgEdge, features) # Extraccion de las 21 primeras caracteristicas
     HUMoments(imgEdge, features) # Momentos de Hu
-    features[28] = np.pi * area/(perimeter*perimeter) # Redondez
-    features[29] = perimeter*perimeter/area # Compacidad
+    features[27] = np.pi * area/(perimeter*perimeter) # Redondez
+    features[28] = perimeter*perimeter/area # Compacidad
     return features
 
 path=os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(path, 'Project_Data.csv')
+file_path = os.path.join(path, 'Project_Data_Fingers.csv')
 
 
 with open(file_path, 'w', newline='') as file:
@@ -343,20 +343,20 @@ with open(file_path, 'w', newline='') as file:
 
 
 
-    Clases_Length=len(os.listdir(os.path.join(path, 'Images')))
+    Clases_Length=len(os.listdir(os.path.join(path, 'Images_Fingers')))
 
     for i in range(1,Clases_Length+1):
-            Data_length=len(os.listdir(os.path.join(os.path.join(path, 'Images'),str(i))))
+            Data_length=len(os.listdir(os.path.join(os.path.join(path, 'Images_Fingers'),str(i))))
             
             for j in range(1,Data_length+1):
                 
-                Image_path=os.path.join(os.path.join(os.path.join(path, 'Images'),str(i)),str(j)+'.jpg')
+                Image_path=os.path.join(os.path.join(os.path.join(path, 'Images_Fingers'),str(i)),str(j)+'.jpg')
                 print(Image_path)
                 
-                Features_Vec = np.zeros((31)).astype(float)
+                Features_Vec = np.zeros((30)).astype(float)
                 img = cv2.imread(Image_path,1)
-                Features_Vec[:30]=getFeatures(img)
-                Features_Vec[30]=i
+                Features_Vec[:29]=getFeatures(img)
+                Features_Vec[29]=i
                 writer.writerow(Features_Vec)
 
 
