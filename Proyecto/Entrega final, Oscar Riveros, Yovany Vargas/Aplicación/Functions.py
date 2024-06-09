@@ -65,7 +65,7 @@ def OR(img1, img2, mask, kernel): # Operación AND (&&)
     firstOperation = cv2.bitwise_or(img1, img2, mask = mask)
     return cv2.dilate(firstOperation, kernel, iterations = 1)
 
-def getHandHSV(path):
+def getHandYCrCb(path):
     original = loadImg(path)
     blur = blurImg(imgYCrCb(original))
     brightness = imgBrightness(blur)
@@ -75,6 +75,11 @@ def getHandHSV(path):
     outEdge = outEdgeImg(otsu, kernel)
     canny = cannyImg(segmentedHand, kernel)
     shadows = shadowImg(segmentedHand, kernel)
-    shadowCanny = AND()
+    shadowCanny = AND(shadows, canny, None, kernel)
+    hand = OR(outEdge, shadowCanny, None)
     return hand
-print('Optimo')
+
+img = getHandYCrCb('Images/Indoor_G.jpg')
+cv2.imshow('Mano', img)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
