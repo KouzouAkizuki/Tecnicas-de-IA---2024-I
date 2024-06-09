@@ -73,5 +73,8 @@ def getHandHSV(path):
     otsu = otsuImg(blur, brightness, kernel)
     segmentedHand = AND(blur, blur, otsu)
     outEdge = outEdgeImg(otsu, kernel)
+    canny = cannyImg(segmentedHand, kernel)
+    shadows = shadowImg(segmentedHand, kernel)
+    shadowCanny = AND()
     return hand
 print('Optimo')
