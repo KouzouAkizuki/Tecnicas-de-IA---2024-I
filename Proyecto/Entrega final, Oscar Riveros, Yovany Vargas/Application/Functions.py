@@ -68,33 +68,28 @@ def OR(img1, img2, mask, kernel, n): # Operación AND (&&)
 
 def close(img, kernel, n): # Cierre
     output = img
-    for i in range(n):
+    for _ in range(n):
         output = cv2.morphologyEx(output, cv2.MORPH_CLOSE, kernel)
     return output
 
 def getHand(path):
+    original = loadImg(path)
+    blurYCrCb = blurImg(imgYCrCb(original))
+    blurHSV = blurImg(imgHSV(original))
+    brightness = imgBrightness(blurHSV)
+    kernel = np.ones((7, 7), np.uint8)
+    grayYCrCb = imgGray(blurYCrCb, 1) # Bordes externos
+    grayHSV = imgGray(blurHSV, 1) # Bordes internos
+    otsu = otsuImg(grayYCrCb, brightness)
+    areaHand = outEdgeImg(otsu, True, kernel, 0)
+    segmentedHand = AND(grayHSV, grayHSV, areaHand, kernel, 0)
+    canny = cannyImg(segmentedHand, kernel, 1)
+    shadows = shadowImg(segmentedHand, kernel, 1)
+    shadowCanny = AND(shadows, canny, None, kernel, 0)
+    outEdge = outEdgeImg(otsu, False, kernel, 0)
+    hand = OR(outEdge, shadowCanny, None, kernel, 0)
+    initial = np.zeros_like(hand)
+    while not np.array_equal(initial, hand):
+        initial = hand
+        hand = close(hand, kernel, 1)
     return hand
-
-path = '/Images/Indoor_G.jpg'
-original = loadImg(path)
-blurYCrCb = blurImg(imgYCrCb(original))
-blurHSV = blurImg(imgHSV(original))
-brightness = imgBrightness(blurHSV)
-kernel = np.ones((5, 5), np.uint8)
-grayYCrCb = imgGray(blurYCrCb, 1) # Bordes externos
-grayHSV = imgGray(blurHSV, 1) # Bordes internos
-otsu = otsuImg(grayYCrCb, brightness)
-areaHand = outEdgeImg(otsu, True, kernel, 0)
-segmentedHand = AND(grayHSV, grayHSV, areaHand, kernel, 0)
-canny = cannyImg(segmentedHand, kernel, 0)
-shadows = shadowImg(segmentedHand, kernel, 0)
-shadowCanny = AND(shadows, canny, None, kernel, 0)
-outEdge = outEdgeImg(otsu, False, kernel, 0)
-hand = OR(outEdge, shadowCanny, None, kernel, 0)
-hand = close(hand, kernel, n)
-cv2.namedWindow('Prueba', cv2.WINDOW_NORMAL)
-cv2.imshow('Prueba', hand)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
-
-
