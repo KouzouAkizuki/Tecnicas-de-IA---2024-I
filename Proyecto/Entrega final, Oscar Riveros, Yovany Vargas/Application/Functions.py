@@ -78,8 +78,8 @@ def getHand(path):
     blurHSV = blurImg(imgHSV(original))
     brightness = imgBrightness(blurHSV)
     kernel = np.ones((7, 7), np.uint8)
-    grayYCrCb = imgGray(blurYCrCb, 1) # Bordes externos
-    grayHSV = imgGray(blurHSV, 1) # Bordes internos
+    grayYCrCb = imgGray(blurYCrCb, 1) # Para bordes externos, silueta
+    grayHSV = imgGray(blurHSV, 1) # Para bordes internos, dedos
     otsu = otsuImg(grayYCrCb, brightness)
     areaHand = outEdgeImg(otsu, True, kernel, 0)
     segmentedHand = AND(grayHSV, grayHSV, areaHand, kernel, 0)
