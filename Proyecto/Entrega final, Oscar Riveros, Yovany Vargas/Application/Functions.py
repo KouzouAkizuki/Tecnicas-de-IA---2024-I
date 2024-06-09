@@ -54,7 +54,7 @@ def cannyImg(segmentedHand, kernel, n): # Canny
     canny = feature.canny(segmentedHand, sigma=1).astype(np.uint8)*255
     return cv2.dilate(canny, kernel, iterations = n)
 
-def shadowImg(segmentedHand, kernel, n):
+def shadowImg(segmentedHand, kernel, n): # Sombras
     _,shadows = cv2.threshold(segmentedHand, 115, 255, cv2.THRESH_BINARY)
     return cv2.dilate(shadows, kernel, iterations = n)
 
