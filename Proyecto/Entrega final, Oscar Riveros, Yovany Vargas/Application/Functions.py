@@ -93,3 +93,5 @@ def getHand(path):
         initial = hand
         hand = close(hand, kernel, 1)
     return hand
+
+# Funciones para la extracción de características
