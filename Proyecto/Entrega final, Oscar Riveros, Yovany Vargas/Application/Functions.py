@@ -1,14 +1,12 @@
 import cv2
 import numpy as np
 import os
-from scipy import signal
 import joblib
+from scipy import signal
 from skimage import feature
 
 # Funciones para la adecuación de las imágenes, hasta la obtención de bordes
 def loadImg(img): # Cargar imagen en RGB
-    # route = os.path.dirname(__file__) + route
-    # img = cv2.imread(route, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
 
@@ -214,8 +212,12 @@ def index(leftPoints, palmCenter, centerWrist, leftWrist):
 
 def getFeatures(original):
     handArea, outEdge, x, y = getHand(original)
+    cv2.namedWindow('Segmentación obtenida', cv2.WINDOW_NORMAL)
+    cv2.imshow('Segmentación obtenida', handArea)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     _, maxDistance, palmCenter = distanceTransform(handArea, x)
-    centerWrist, leftWrist, rightWrist, leftPoints, radio = getHandPoints(handArea, maxDistance, palmCenter, x, y)
+    centerWrist, leftWrist, _, leftPoints, radio = getHandPoints(handArea, maxDistance, palmCenter, x, y)
     initialLeft, finalLeft, initialRight, finalRight = thumbLinesPoints(palmCenter, centerWrist, leftWrist, radio, 1.5, 1)
     leftPoints = leftPoints[1:]
     fingers = len(leftPoints)
@@ -237,13 +239,10 @@ def getFeatures(original):
         features = [0, 1, 1, 1, 0, 1, 0, 0, 0, 1]
     elif not isIndex and fingers == 3: # Fine
         features = [0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
-    else:
-        features = ['Imagen no apta']
+        
     huMoments =cv2.HuMoments(cv2.moments(outEdge))
-
     for moment in huMoments:
         features.append(moment[0])
-    
     palmArea = np.pi*radio*radio
     palmPerimeter = 2*np.pi*radio
     perimeter = cv2.arcLength(outEdge, 1) # Perímetro
@@ -254,14 +253,17 @@ def getFeatures(original):
     features.append(perimeter*perimeter/area) # Compacidad
     return features
 
-# Red neuronal
-
-def whichGesture(red, data):
-    max_values = [6.645803, 1, 1, 0.054815, 0.021134, 4.734428, 1, 1.2e-05, 1, 0.040994, 178.883129, 1, 1, 1, 1, 0.159799, 0.001943, 0.556775, 1, 1, 0.265885]
-    index = [17, 3, 6, 12, 15, 18, 0, 16, 7, 13, 20, 4, 2, 8, 5, 19, 14, 10, 9, 1, 11]
-    orderedData = []
-    for i in index:
-        orderedData.append(data[i])
-    orderedData = [np.array(orderedData)/max_values]
-    case = red.predict(orderedData)[0]
-    return case
+# Función general, con la red neuronal ya entrenada
+def handTracking(red, img):
+    try:
+        max_values = [6.645803, 1, 1, 0.054815, 0.021134, 4.734428, 1, 1.2e-05, 1, 0.040994, 178.883129, 1, 1, 1, 1, 0.159799, 0.001943, 0.556775, 1, 1, 0.265885]
+        index = [17, 3, 6, 12, 15, 18, 0, 16, 7, 13, 20, 4, 2, 8, 5, 19, 14, 10, 9, 1, 11]
+        orderedData = []
+        data = getFeatures(img)
+        for i in index:
+            orderedData.append(data[i])
+        orderedData = [np.array(orderedData)/max_values]
+        case = red.predict(orderedData)[0]
+        return case
+    except Exception:
+        return 0
