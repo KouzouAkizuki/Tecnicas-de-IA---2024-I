@@ -1,286 +1,171 @@
-from skimage import feature, filters
-from scipy import signal
-import matplotlib as mpl
-mpl.rcParams['figure.dpi'] = 300
+# -- coding: utf-8 --
+# Librerias necesarias para la creacion de la interfaz grafica
+from tkinter import Canvas, Tk, Frame, Label, Button, Radiobutton, StringVar, LEFT, RIGHT
+from PIL import ImageTk, Image
+from pathlib import Path
+from Functions import *
 
-featuresVector = ['Numero de dedos', 'Angulo indice', 'Angulo corazon', 'Angulo anular', 'Angulo menique',
-                  'Ancho pulgar', 'Ancho indice', 'Ancho corazon', 'Ancho anular', 'Ancho menique',
-                  'Pulgar extendido', 'Indice extendido', 'Corazon extendido', 'Anular extendido', 'Menique extendido',
-                  'Pulgar contraido', 'Indice contraido', 'Corazon contraido', 'Anular contraido', 'Menique contraido']
+# Get the current working directory
+current_dir = Path(__file__).parent
 
-############################### Proceso de segmentacion de la imagen ###############################
-#### Proceso de segmentacion de la imagen ####
-Imagen = [Indoor_G, Pattern_G, Green_G]
-# Imagen=[Indoor_P, Pattern_P, Green_P]
+actual_pose = None
+previus_pose = None
 
-#Segmentacion de la imagen
-Seg = [Segmentation(a) for a in Imagen]
-Image_Masked =  [cv2.bitwise_and(Seg[a][2], Seg[a][2], mask=Seg[a][0]) for a in range(len(Imagen))]
+def show_encabezado(root):
+    frm_encabezado = Frame(root, bg="#cccccc")
+    frm_encabezado.pack(fill='x')
 
-#Contorno de los dedos
-Finger_Contours = [Finger_Contour(Seg[a][0], Seg[a][2], Seg[a][1]) for a in range(len(Imagen))]
+    img_logo = Image.open(current_dir / "Interface" / "unal.svg")
+    img_logo = img_logo.resize((100, 100), Image.LANCZOS)  # resize to 100x100 pixels
+    img_logo = ImageTk.PhotoImage(img_logo)  # convert the image object to a tkinter-compatible photo image
 
-Characteristics=[]
-#Referencia del tiempo de ejecucion
-ref=time.time()
+    lb_img_logo = Label(frm_encabezado, image=img_logo)
+    lb_img_logo.image = img_logo  # keep a reference to the image to prevent it from being garbage collected
+    lb_img_logo.pack(side=LEFT)
+    
+    frm_names = Frame(frm_encabezado, bg="#94b43b")
+    frm_names.pack(side=LEFT, fill='both', expand=True)
 
-for i in range(3):
+    # Create three labels under each other
+    lb_lab4 = Label(frm_names, text="Proyecto Final, TIA - Hand Tracking", bg="#94b43b", font=("Arial", 16))
+    lb_lab4.pack(fill='x')
 
-        ############################## Extraccion de caracteristicas ###############################
+    lb_name1= Label(frm_names, text="Oscar Leonardo Riveros Perez", bg="#94b43b", font=("Arial", 14))
+    lb_name1.pack(fill='x')
 
-        #Calculo de la transformada de distancia, radio y coordenadas para generar el circulo de la palma
-        D_Transform=cv2.distanceTransform(Seg[i][0], distanceType=cv2.DIST_L1, maskSize=3)
-        R_DT_1=np.max(D_Transform)
-        Coor_DT_1=(np.argmax(D_Transform)%Seg[i][3],np.argmax(D_Transform)//Seg[i][3])
+    lb_name2 = Label(frm_names, text="Yovany Esneider Vargas Gutierrez", bg="#94b43b", font=("Arial", 14))
+    lb_name2.pack(fill='x')
 
-        #Circulos de la palma
-        Circle=cv2.circle(np.zeros_like(Seg[i][2]), Coor_DT_1, int(R_DT_1), 255, -1) 
-        Circle_max=cv2.circle(np.zeros_like(Seg[i][2]), Coor_DT_1, int(R_DT_1*1.5), 255, -1) 
-
-        #Crear un muestreo de n puntos con el circulo mascara respecto la imagen original, lo cual dara indicios de en que lugar se encuentra la palma y los dedos
-        Angle=np.linspace(0,360,1000)
-        Radial_Sample=np.zeros_like(Angle)
-        Index_y=np.clip((int(R_DT_1*1.5)*np.cos(Angle*np.pi/180)+Coor_DT_1[1]).astype(int),0,Seg[i][4]-1)
-        Index_x=np.clip((int(R_DT_1*1.5)*np.sin(Angle*np.pi/180)+Coor_DT_1[0]).astype(int),0,Seg[i][3]-1)
-        
-        # print(type(Seg[i][0][Index_y[0],Index_x[0]]))
-        for k in range(0,len(Radial_Sample)):
-                Radial_Sample[k]=Seg[i][0][Index_y[k]][Index_x[k]]
-
-        #Ajuste para comenzar el arreglo en el primer punto minimo
-        Shift=np.argmin(Radial_Sample)
-        Radial_Sample=np.roll(Radial_Sample,-Shift)
-        Radial_Sample[-1]=0
-
-        # Realizar la transformada de distancia para identificar el punto central de los dedos y palma, ademas de su anchura
-        D_Transform_Samples=cv2.distanceTransform(Radial_Sample.astype(np.uint8), distanceType=cv2.DIST_L1, maskSize=3)
-        D_T_Samples_R=np.max(D_Transform_Samples).astype(int)
-        D_T_Samples_C=np.argmax(D_Transform_Samples).astype(int)
-
-        #Ajustar los arreglos para que siempre empiecen con el punto maximo, correspondiente a la palma
-        Radial_Sample=np.roll(Radial_Sample,D_T_Samples_R+len(Angle)-D_T_Samples_C)
-        Index_y=np.roll(Index_y,D_T_Samples_R+len(Angle)-D_T_Samples_C-Shift)
-        Index_x=np.roll(Index_x,D_T_Samples_R+len(Angle)-D_T_Samples_C-Shift)
-        D_Transform_Samples=np.roll(D_Transform_Samples,D_T_Samples_R+len(Angle)-D_T_Samples_C)
-        D_Transform_Samples=D_Transform_Samples.flatten()
-        Angle=np.roll(Angle,D_T_Samples_R+len(Angle)-D_T_Samples_C-Shift)
-
-        #Encontrar el indice del circulo en el que se encuentran los dedos y la palma, tambien su radio
-        Peak_Center=signal.find_peaks(D_Transform_Samples, height=10, width=5)
-        Peak_Center=Peak_Center[0].astype(int)
-        if(len(Peak_Center)>6):
-                Peak_Center=Peak_Center[:6]
-        Peak_Radius=D_Transform_Samples[Peak_Center].astype(int)
-
-        #Puntos centra, y extremos de los dedos
-        Point_1 = np.vstack((Index_x[Peak_Center-Peak_Radius], Index_y[Peak_Center-Peak_Radius])).T
-        Point_2 = np.vstack((Index_x[Peak_Center+Peak_Radius], Index_y[Peak_Center+Peak_Radius])).T
-        Point_Center = np.vstack((Index_x[Peak_Center], Index_y[Peak_Center])).T
-        Angle_Points = Angle[Peak_Center]
-
-        FingerSize_1=np.zeros_like(Peak_Center).astype(float)
-        FingerSize_Inner_1=np.zeros_like(Peak_Center).astype(float)
-        #Lineas de los dedos y palma
-        xd = Imagen[i].astype(np.uint8)
-        for k in range(0,len(Peak_Center)):
-                FingerSize_1[k]=np.sqrt((Point_1[k][0]-Point_2[k][0])**2+(Point_1[k][1]-Point_2[k][1])**2)/R_DT_1
-                FingerSize_Inner_1[k]=1.4
-                xd=cv2.line(xd, pt1=Point_2[k], pt2=Point_1[k], color=(0, 255, 0), thickness=20)
+    Button(frm_encabezado, text="EXIT", command=root.destroy).pack(side=LEFT)
 
 
-        Point_Finger_Ext=np.zeros_like(Point_1)
-        #Lineas de los dedos y palma
-        m_img=Seg[i][4]/Seg[i][3]
+def show_contenido(root):
+    global cells 
+    global lb_img_actual, lb_img_previus
 
-        
-        for k in range(1,len(Peak_Center)):
-                        
-                #Hallar pendiente ortogonal a la recta de los dedos (Para tener X=m*(y-y1)+x1)
-                m = -(Point_1[k][1]-Point_2[k][1])/(Point_1[k][0]-Point_2[k][0])
+    # Create a frame to hold the radio buttons and teach button
+    frm_commands= Frame(root)
+    frm_commands.pack(side=LEFT, fill = 'both', expand=True)
 
+    # Create a variable to keep track of which radio button is selected
+    radio_var = StringVar()
+    radio_var.set(None)  # Set the default value to an empty string
 
-                if(m>m_img):
-                        y_finger=np.arange(Point_Center[k][1],Seg[i][4])
-                        x_finger = m*(y_finger-Point_Center[k][1])+Point_Center[k][0]
-                        x_overload_upper = np.where(x_finger >= Seg[k][3])[0]
-                        x_overload_lower = np.where(x_finger <= 0)[0]
-                        
-                        if(len(x_overload_upper)>0):
-                                x_finger = x_finger[:x_overload_upper[0]-1]
-                                y_finger = y_finger[:x_overload_upper[0]-1]
-      
-                        if(len(x_overload_lower)>0):
-                                x_finger = x_finger[:x_overload_upper[0]-1]
-                                y_finger = y_finger[:x_overload_upper[0]-1]
+    radio_buttons_text = ["[0, 0, 0, 0, 0]", "[25, 25, 20, -20, 0]", "[-35, 35, -30, 30, 0]", "[85, -10, 55, 25 , 0]", "[0, -10, 90, -90, 0]"]
 
+    # Create five radio buttons
+    for i in range(5):
+        rb = Radiobutton(frm_commands, text=f"Pose {i+1} = {radio_buttons_text[i]}", variable=radio_var, value=f"{i+1}")
+        rb.pack(fill="both", expand=True)
 
-                else:
-                        y_finger=np.arange(0,Point_Center[k][1])
-                        x_finger = m*(y_finger-Point_Center[k][1])+Point_Center[k][0]
-                        x_overload_upper = np.where(x_finger >= Seg[i][3])[0]
-                        x_overload_lower = np.where(x_finger <= 0)[0]
+    teach_button = Button(frm_commands, text="Ir a posición", bg="#94b43b", font=("Arial", 20), command=lambda: callback_teach_button(radio_var))
+    teach_button.pack()
 
-                        if(len(x_overload_upper)>0):
-                                x_finger = x_finger[x_overload_upper[-1]+1:]
-                                y_finger = y_finger[x_overload_upper[-1]+1:]
-                        if(len(x_overload_lower)>0):
-                                x_finger = x_finger[x_overload_lower[-1]+1:]
-                                y_finger = y_finger[x_overload_lower[-1]+1:]
+    # Create a frame to hold the table of articulation positions
+    frm_positions = Frame(frm_commands)
+    frm_positions.pack(side='bottom', anchor='center', padx=10, pady=10)
 
-                x_samples=np.zeros_like(x_finger)
+    # Define the data for the table
+    data = [
+        ["Articulación", "Valor"],
+        ["q1", "value"],
+        ["q2", "value"],
+        ["q3", "value"],
+        ["q4", "value"],
+        ["q5", "value"]
+    ]
 
-                #Hallar el punto externo del dedo que coincide con la recta proyectada ortogonal a la obtenida de los dedos
-                for j in range(0,len(x_finger)):
-                        x_samples[j]=Seg[i][0][y_finger[j].astype(int)][x_finger[j].astype(int)]
+    cells = [[] for _ in range(len(data))]
 
-                        if(m>m_img):
-                                if(x_samples[j]==0):
-                                        break
-                        else:   
-                                if(x_samples[j]==255):
-                                        break
+    # Create the table
+    for i in range(len(data)):
+        for j in range(len(data[i])):
+            cell = Label(frm_positions, text=data[i][j], borderwidth=1, relief="solid", width=14, height=2, font=("Arial", 12))
+            cell.grid(row=i, column=j)
+            cells[i].append(cell)
 
-                Point_Finger_Ext[k]=[x_finger[j].astype(int),y_finger[j].astype(int)]
+    cells[0][0].config(font=("Arial", 12, "bold"))  # Set the font style to bold
+    cells[0][1].config(font=("Arial", 12, "bold"))  # Set the font style to bold
 
-        FingerSize_Ext_1=np.zeros_like(Peak_Center).astype(float)
-        for k in range(1,len(Peak_Center)):
-                xd=cv2.line(xd, Point_Center[k], Point_Finger_Ext[k], (0, 255, 0), thickness=20)
-                FingerSize_Ext_1[k]=np.sqrt((Point_Center[k][0]-Point_Finger_Ext[k][0])**2+(Point_Center[k][1]-Point_Finger_Ext[k][1])**2)/R_DT_1
+    # Create a frame to hold the images
+    frm_images = Frame(root)
+    frm_images.pack(side=RIGHT, padx=10, pady=10, fill = 'both', expand=True)
+    
+    lb_txt_previus = Label(frm_images, text="Última posición enviada", font=("Arial", 16))
+    lb_txt_previus.grid(row = 0, column = 0, padx= 10)
 
+    lb_txt_actual = Label(frm_images, text="Posición actual", font=("Arial", 16))
+    lb_txt_actual.grid(row = 0, column = 1, padx= 10)
 
-        plt.figure(1)
-        plt.subplot(15,3,i+1), plt.imshow(Imagen[i]), plt.title('Original '+title2[i])
-        plt.axis('off')
-        plt.subplot(15,3,i+4), plt.imshow(Image_Masked[i] ,cmap=plt.cm.gray), plt.title('Segmentation '+title2[i], fontsize = 8)
-        plt.axis('off')
-        plt.subplot(15,3,i+7), plt.imshow(D_Transform ,cmap=plt.cm.gray), plt.title('Transformada de distancia '+title2[i], fontsize = 5)
-        plt.axis('off')
-        plt.subplot(15,3,i+10), plt.plot(Radial_Sample), plt.title('Muestreo del circulo '+title2[i], fontsize = 5)
-        plt.subplot(15,3,i+13), plt.plot(D_Transform_Samples), plt.title('Transformada de distancia - 1D '+title2[i], fontsize = 5)
-        plt.subplot(15,3,i+16), plt.imshow(xd ,cmap=plt.cm.gray), plt.title('Dedos identificados #1 ' +title2[i], fontsize = 4)
-        plt.axis('off')
+    lb_img_previus = Label(frm_images)
+    lb_img_previus.grid(row=1, column=0, padx=10, pady=10)
+
+    lb_img_actual = Label(frm_images)
+    lb_img_actual.grid(row=1, column=1, padx=10, pady=10)
 
 
-        #Transformada de distancia para verificar si existen dedos encogidos
-        D_Transform_Aux=cv2.distanceTransform(Finger_Contours[i][1], distanceType=cv2.DIST_L1, maskSize=3)
-        R_DT_Aux=np.max(D_Transform_Aux)
-        Coor_DT_Aux=(np.argmax(D_Transform_Aux)%Seg[i][3],np.argmax(D_Transform_Aux)//Seg[i][3])
+def callback_teach_button(radio_var):
+    global actual_pose, previus_pose
+    previus_pose = actual_pose
+    actual_pose = int(radio_var.get())
+    callback_images(previus_pose, actual_pose)
+    main_HMI.joint_publisher(actual_pose - 1) 
+    main_HMI.listener()
+    
+    
+# Function that displays an image based on the selected radio button
+def callback_images(previus_pose: int, actual_pose: int):
 
-        #Segmentacion de los dedos compleja
-        tol=0.2
-        if(not(np.abs(Coor_DT_1[0]-Coor_DT_Aux[0])/Coor_DT_1[0]<tol and np.abs(Coor_DT_1[1]-Coor_DT_Aux[1])/Coor_DT_1[1]<tol) and len(Peak_Center)<6):
-                #Umbralizar para segmentar palma y dedos
-                _,shadows_2 = cv2.threshold((D_Transform_Aux*255/np.max(R_DT_Aux)).astype(np.uint8),50,255,cv2.THRESH_BINARY)
+    # Map the selected option to an image file
+    dic_img_path = {
+        1: current_dir / "IMGS" / "pose1.png",
+        2: current_dir / "IMGS" / "pose2.png",
+        3: current_dir / "IMGS" / "pose3.png",
+        4: current_dir / "IMGS" / "pose4.png",
+        5: current_dir / "IMGS" / "pose5.png",
+    }
 
-                #Encontrar el contorno mas grande (Palma)
-                c_Var = cv2.findContours(shadows_2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                c_Var = c_Var[0] if len(c_Var) == 2 else c_Var[1]
-                C_var = max(c_Var, key=cv2.contourArea)
-                
-                Contorno_Palma = np.zeros_like(Seg[i][2])
-                cv2.drawContours(Contorno_Palma, [C_var], 0, (255,255,255), cv2.FILLED)
+    default = current_dir / "IMGS" / "default.jpg"
 
-                #Mascara para obtener los dedos
-                Mask_Dedos_1 = cv2.bitwise_and(Circle, cv2.bitwise_not(Contorno_Palma))
-                Dedos_1 = cv2.bitwise_and(Finger_Contours[i][1], Mask_Dedos_1)
+    actual_img_path = dic_img_path.get(actual_pose, default)
+    previus_img_path = dic_img_path.get(previus_pose, default)
 
-                #Transformada de distancia de los dedos
-                Dedos_1=cv2.distanceTransform(Dedos_1, distanceType=cv2.DIST_L1, maskSize=3)
+    # Load the image
+    actual_img = Image.open(actual_img_path)
+    actual_img = actual_img.resize((300, 300), Image.LANCZOS)  # Resize the image to 300x300 pixels
 
-                # Transformada de distancia - Erosinada
-                Dedos_1=cv2.erode(Dedos_1, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(10,10)), iterations = 10)
-                Dedos_1=cv2.dilate(Dedos_1, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(10,10)), iterations = 10)
-                _,Dedos_1 = cv2.threshold((Dedos_1*255/np.max(Dedos_1)).astype(np.uint8),80,255,cv2.THRESH_BINARY)
+    previus_img = Image.open(previus_img_path)
+    previus_img = previus_img.resize((300, 300), Image.LANCZOS)  # Resize the image to 300x300 pixels
 
-                #Crear un muestreo de n puntos con el circulo mascara respecto la imagen original, lo cual dara indicios de en que lugar se encuentran los dedos
-                Radial_Sample_2=np.zeros_like(Angle)
-                Index_y_2=(int(R_DT_1*0.9)*np.cos(Angle*np.pi/180)+Coor_DT_1[1]).astype(int)
-                Index_x_2=(int(R_DT_1*0.9)*np.sin(Angle*np.pi/180)+Coor_DT_1[0]).astype(int)
+    # Convert the image to a PhotoImage object
+    photo_actual = ImageTk.PhotoImage(actual_img)
+    photo_previus = ImageTk.PhotoImage(previus_img)
 
-                for k in range(0,len(Radial_Sample_2)):
-                        Radial_Sample_2[k]=Dedos_1[Index_y_2[k]][Index_x_2[k]]
+    # Set the image of the label
+    lb_img_actual.config(image=photo_actual)
+    lb_img_actual.image = photo_actual  # Keep a reference to the image to prevent it from being garbage collected
 
-                #Ajuste para comenzar el arreglo en el primer punto minimo
-                Radial_Sample_2[-1]=0
+    lb_img_previus.config(image=photo_previus)
+    lb_img_previus.image = photo_previus  # Keep a reference to the image to prevent it from being garbage collected
 
-                #Realizar la transformada de distancia para identificar el punto central de los dedos y palma, ademas de su anchura
-                D_Transform_Samples_2=cv2.distanceTransform(Radial_Sample_2.astype(np.uint8), distanceType=cv2.DIST_L1, maskSize=3)
-                D_T_Samples_2_R=np.max(D_Transform_Samples_2).astype(int)
-                D_T_Samples_2_C=np.argmax(D_Transform_Samples_2).astype(int)
+def data_to_HMI(data):
+    global cells
+    cells[1][1].config(text=f"{data[0]:.2f}°")
+    cells[2][1].config(text=f"{data[1]:.2f}°")
+    cells[3][1].config(text=f"{data[2]:.2f}°")
+    cells[4][1].config(text=f"{data[3]:.2f}°")
+    cells[5][1].config(text=f"{data[4]:.2f}°")
 
+def main():
 
-                #Ajustar los arreglos para que siempre empiecen con el punto maximo, correspondiente a la palma
-                D_Transform_Samples_2=D_Transform_Samples_2.flatten()
+    root = Tk() # Create an instance of tkinter window
+    root.geometry("1000x600") # Define the geometry of the window
+    root.title("HMI") # Set the title of the window
 
-                #Encontrar el indice del circulo en el que se encuentran los dedos y la palma, tambien su radio
-                Peak_Center_2=signal.find_peaks(D_Transform_Samples_2, height=10, width=5)
-                Peak_Center_2=Peak_Center_2[0].astype(int)
-                if(len(Peak_Center_2)>6-len(Peak_Center)):
-                        Peak_Center_2=Peak_Center_2[:6-len(Peak_Center)]
+    show_encabezado(root)
+    show_contenido(root)
 
-                Peak_Radius_2=D_Transform_Samples_2[Peak_Center_2].astype(int)
+    root.mainloop()
 
-                Point_1_Int=np.vstack((Index_x_2[Peak_Center_2-Peak_Radius_2], Index_y_2[Peak_Center_2-Peak_Radius_2])).T
-                Point_2_Int=np.vstack((Index_x_2[Peak_Center_2+Peak_Radius_2], Index_y_2[Peak_Center_2+Peak_Radius_2])).T
-                Point_Center_Int=np.vstack((Index_x_2[Peak_Center_2], Index_y_2[Peak_Center_2])).T
-                Angle_Points_Int=Angle[Peak_Center_2]
-
-                FingerSize_2=np.zeros_like(Peak_Center_2).astype(float)
-                FingerSize_Ext_2=np.zeros_like(Peak_Center_2).astype(float)
-                FingerSize_Inner_2=np.zeros_like(Peak_Center_2).astype(float)
-
-                for k in range(0,len(Peak_Center_2)):
-                        FingerSize_2[k]=np.sqrt((Point_1_Int[k][0]-Point_2_Int[k][0])**2+(Point_1_Int[k][1]-Point_2_Int[k][1])**2)/R_DT_1
-                        FingerSize_Ext_2[k]=np.sqrt((Point_Center_Int[k][0]-Coor_DT_1[0])**2+(Point_Center_Int[k][1]-Coor_DT_1[1])**2)/R_DT_1
-                        FingerSize_Inner_2[k]=0.9
-                        xd=cv2.line(xd, Point_2_Int[k], Point_1_Int[k], (0, 255, 0), thickness=20)
-                        xd=cv2.line(xd, Point_Center_Int[k], Coor_DT_1, (0, 255, 0), thickness=20)
-
-        #Obtener el angulo tomando como referencia el quinto dedo
-        if(len(Peak_Center)<6):
-                Angle_All=np.hstack((Angle_Points,Angle_Points_Int))
-                FingerSize_All=np.hstack((FingerSize_1[1:],FingerSize_2))
-                FingerSize_Ext_All=np.hstack((FingerSize_Ext_1[1:],FingerSize_Ext_2))
-                FingerSize_Inner_All=np.hstack((FingerSize_Inner_1[1:],FingerSize_Inner_2))
-        else:
-                Angle_All=Angle_Points
-                FingerSize_All=FingerSize_1[1:]
-                FingerSize_Ext_All=FingerSize_Ext_1[1:]
-                FingerSize_Inner_All=FingerSize_Inner_1[1:]
-
-        #Ajuste del orden de los dedos y angulo de referencia
-        Angle_All=Angle_All[1:]-Angle_All[0]
-        Min_angle_ref=np.argmin(Angle_All)
-        Angle_All=Angle_All-Angle_All[Min_angle_ref]
-
-        #Indices para ordenar los dedos 
-        Sort_Index=np.argsort(Angle_All)
-
-        #Ordenar los arreglos de informacion en base al orden de los dedos
-        Angle_All=np.sort(Angle_All)
-        FingerSize_All=FingerSize_All[Sort_Index]
-        FingerSize_Ext_All=FingerSize_Ext_All[Sort_Index]
-        FingerSize_Inner_All=FingerSize_Inner_All[Sort_Index]
-
-        #Vector de caracteristicas
-        Caracteristicas=np.zeros(20).astype(float)
-
-        #Numero de dedos
-        Caracteristicas[0]=len(Angle_All)
-
-        #Angulo relativo de los dedos (Grados °)
-        Caracteristicas[1:len(Angle_All)]=Angle_All[1:len(Angle_All)]
-
-        #Ancho de los dedos normalizado
-        Caracteristicas[5:5+len(FingerSize_All)]=FingerSize_All
-
-        #Tamaño de los dedos interno normalizado
-        Caracteristicas[10:10+len(FingerSize_Inner_All)]=FingerSize_Inner_All
-
-        #Tamaño de los dedos externo normalizado
-        Caracteristicas[15:15+len(FingerSize_Ext_All)]=FingerSize_Ext_All
-
-        Characteristics.append(Caracteristicas)
-
-for i in range(3):
-        print(Characteristics[i])
+if __name__ == '__main__':
+    main()

@@ -1,19 +1,14 @@
 import cv2
-from IPython.display import Image
 import numpy as np
-import math
-from matplotlib import pyplot as plt
-import matplotlib as mpl
 import os
-import time
-from scipy import ndimage as ndi
 from scipy import signal
-from skimage import graph, color, filters, morphology, segmentation, measure, feature
+import joblib
+from skimage import feature
 
 # Funciones para la adecuación de las imágenes, hasta la obtención de bordes
-def loadImg(route): # Cargar imagen en RGB
-    route = os.path.dirname(__file__) + route
-    img = cv2.imread(route, 1)
+def loadImg(img): # Cargar imagen en RGB
+    # route = os.path.dirname(__file__) + route
+    # img = cv2.imread(route, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
 
@@ -43,7 +38,7 @@ def outEdgeImg(otsu): # Borde exterior
     dataEdge = dataEdge[0] if len(dataEdge) == 2 else dataEdge[1]
     longestEdge = max(dataEdge, key = cv2.contourArea)
     area = cv2.drawContours(np.zeros_like(otsu), [longestEdge], 0, (255, 255, 255), cv2.FILLED)
-    edge = cv2.drawContours(np.zeros_like(otsu), [longestEdge], 0, (255, 255, 255), 3)
+    edge = longestEdge.squeeze()
     return area, edge
 
 def cannyImg(segmentedHand, kernel, n): # Canny
@@ -68,12 +63,6 @@ def close(img, kernel, n): # Cierre
         output = cv2.morphologyEx(output, cv2.MORPH_CLOSE, kernel)
     return output
 
-def open(img, kernel, n):
-    output = img
-    for _ in range(n):
-        output = cv2.morphologyEx(output, cv2.MORPH_OPEN, kernel)
-    return output
-
 def lessBins(img, bins):
     return cv2.normalize(img, None, 0, bins-1, cv2.NORM_MINMAX)
 
@@ -82,42 +71,18 @@ def superClose(img, kernel,n):
     dilaroded = cv2.dilate(dilated, kernel, iterations = n)
     return dilaroded
 
-def getHand(path):
-    original = loadImg(path) # Imagen original RGB
+def getHand(original):
+    original = loadImg(original) # Imagen original RGB
     y, x = original.shape[:2]
     brightness = imgBrightness(original) # Cálculo del brillo
-    print('Brillo:', brightness) # Mostrar el brillo en consola, para posibles errores más adelante
     kernel = np.ones((5, 5), np.uint8) # Se declara un kernel de 5x5 inferior a esto, no es capaz de eliminar el ruido
     blurYCrCb = blurImg(imgYCrCb(original)) # Suavizado de histograma
     YCrCb16 = lessBins(blurYCrCb[:,:,1], 16) # Reducción de bins
     otsu = superClose(otsuImg(YCrCb16, brightness), kernel, 20) # Se aplica un close
     handArea, outEdge = outEdgeImg(otsu) # Se obtiene el area y borde de la mano
-    segmentedHand = AND(imgGray(original), handArea, None, 0) # Mano completa en GRAY
-    canny = cannyImg(segmentedHand, kernel, 2) # Bordes Canny
-    shadows = shadowImg(segmentedHand, kernel, 2) # Sombras
-    shadowCanny = AND(shadows,canny, kernel, 2) # And entre sombras y canny
-    hand = OR(outEdge, shadowCanny, kernel, 0) # Or entre borde exterior y and anterior
-    initial = np.zeros_like(hand)
-    while not np.array_equal(initial, hand): # Se hacen cierres hasta que no se detecten más cambios
-        initial = hand
-        hand = close(hand, kernel, 1)
     rect = cv2.rectangle(np.zeros_like(blurYCrCb[:,:,0]),(0,0),(x,y),(255,255,255),50)
     handArea = cv2.bitwise_and(cv2.bitwise_not(rect), handArea)
-    hand, handArea, x, y = reSizeHand(hand, handArea, x, y)
-    return hand, handArea, x, y, original
-
-def reSizeHand(hand, handArea, x, y):
-    x = x//10
-    y = y//10
-    handArea = cv2.resize(handArea, (x, y), fx = 0, fy = 0, interpolation = cv2.INTER_LINEAR)
-    handArea[handArea > 0] = 255
-    hand = cv2.resize(hand, (x, y), fx = 0, fy = 0, interpolation = cv2.INTER_LINEAR)
-    hand[hand > 0] = 255
-    case = np.any(hand[0, :] == 255)
-    case = (case and True) if (np.any(hand[:, -1] == 255) or np.any(hand[:, 0] == 255)) else False
-    if case: # Esta rotación es más por comodidad que por necesidad
-        hand, handArea = cv2.rotate(hand, cv2.ROTATE_180), cv2.rotate(handArea, cv2.ROTATE_180)
-    return hand, handArea, x, y
+    return handArea, outEdge , x, y
 
 # Funciones para la extracción de características
 def handContour(hand, handArea):
@@ -130,7 +95,7 @@ def distanceTransform(img, x):
     coordinateMaxPoint = (indexMaxPoint % x, indexMaxPoint // x)
     return outPut, maxDistance, coordinateMaxPoint
 
-def getWristPoints(handArea, maxDistance, palmCenter, x, y):
+def getHandPoints(handArea, maxDistance, palmCenter, x, y):
     angle = np.linspace(0,360,1000)
     circle = np.zeros_like(angle)
     radio = int(maxDistance * 1.5)
@@ -155,9 +120,10 @@ def getWristPoints(handArea, maxDistance, palmCenter, x, y):
             distancePeak = distancePeak[:6]
     radiusPeak = circleDistance[distancePeak].astype(int)
     leftWrist = np.vstack((indexX[distancePeak - radiusPeak], indexY[distancePeak - radiusPeak])).T[0]
-    rightWrist = np.vstack((indexX[distancePeak + radiusPeak], indexY[distancePeak + radiusPeak])).T[0]
+    leftPoints = np.vstack((indexX[distancePeak + radiusPeak], indexY[distancePeak + radiusPeak])).T
+    rightWrist = leftPoints[0]
     centerWrist = (leftWrist + rightWrist)/2
-    return centerWrist, leftWrist, maxDistance
+    return centerWrist, leftWrist, rightWrist, leftPoints, maxDistance
 
 def findLinePoints(initialPoint, m, b, radio):
     x1, y1 = initialPoint
@@ -187,8 +153,8 @@ def findPointsOrientation(palmCenter, centerWrist, xTried, yTried):
     right = (xTried[~index], yTried[~index])
     return left, right
 
-def thumbLinePoints(palmCenter, centerWrist, leftWrist, radio, factor):
-    radio = radio*factor
+def thumbLinesPoints(palmCenter, centerWrist, leftWrist, radio, firstFactor, secondFactor):
+    radio = radio*firstFactor
     palmCenter = [palmCenter[0], -palmCenter[1]]
     centerWrist = [centerWrist[0], -centerWrist[1]]
     leftWrist = [leftWrist[0], -leftWrist[1]]
@@ -200,17 +166,102 @@ def thumbLinePoints(palmCenter, centerWrist, leftWrist, radio, factor):
     initialLeft, initialRight = findPointsOrientation(palmCenter, centerWrist, newX, newY)
     newM = -1/m
     bLeft = initialLeft[1] - newM * initialLeft[0]
-    leftX, leftY = findLinePoints(initialLeft, newM, bLeft, radio*factor)
+    leftX, leftY = findLinePoints(initialLeft, newM, bLeft, radio * secondFactor)
     finalLeft, _ = findPointsOrientation(centerWrist, initialLeft, leftX, leftY)
     bRight = initialRight[1] - newM * initialRight[0]
-    rightX, rightY = findLinePoints(initialRight, newM, bRight, radio*factor)
+    rightX, rightY = findLinePoints(initialRight, newM, bRight, radio * secondFactor)
     _, finalRight = findPointsOrientation(centerWrist, initialRight, rightX, rightY)
     initialLeft = np.abs(np.array(initialLeft).astype(np.int32))
     finalLeft = np.abs(np.array(finalLeft).astype(np.int32))
     initialRight = np.abs(np.array(initialRight).astype(np.int32))
     finalRight = np.abs(np.array(finalRight).astype(np.int32))
-    return initialLeft, finalLeft, initialRight, finalRight, m, b
+    return initialLeft, finalLeft, initialRight, finalRight
 
-def restFingers(initialLeft, initialRight, centerPalm, centerWrist):
+def thumb(handArea, initialLeft, finalLeft, initialRight, finalRight):
+    handArea = np.array(handArea)
+    leftLine = np.zeros_like(handArea)
+    leftLine = cv2.line(leftLine, initialLeft, finalLeft, 255, 1)
+    andLeft = cv2.bitwise_and(leftLine, handArea)
+    rightLine = np.zeros_like(handArea)
+    rightLine = cv2.line(rightLine, initialRight, finalRight, 255, 1)
+    andRight = cv2.bitwise_and(rightLine, handArea)
+    thumb = False
+
+    if np.any(andLeft == 255) or np.any(andRight == 255):
+        thumb = True
+        
+    return thumb
+
+def index(leftPoints, palmCenter, centerWrist, leftWrist):
+    palmCenter = [palmCenter[0], -palmCenter[1], 0]
+    centerWrist = [centerWrist[0], -centerWrist[1], 0]
+    leftWrist = [leftWrist[0], -leftWrist[1], 0]
+    point = leftPoints[-1]
+    point = [point[0], -point[1], 0]
+    realCenter = np.array(palmCenter) - np.array(centerWrist)
+    realPoint = np.array(point) - np.array(centerWrist)
+    realLeft = np.array(leftWrist) - np.array(centerWrist)
+    angle = np.arctan2(realCenter[1], realCenter[0])
+    rotZ = [[np.cos(angle), -np.sin(angle), 0],
+            [np.sin(angle), np.cos(angle), 0],
+            [0, 0, 1]]
+    rotatedPoint = np.dot(realPoint, np.array(rotZ))
+    rotatedLeft = np.dot(realLeft, np.array(rotZ))
+    index = False
+    if rotatedPoint[1] > rotatedLeft[1]:
+        index = True
+    return index
+
+def getFeatures(original):
+    handArea, outEdge, x, y = getHand(original)
+    _, maxDistance, palmCenter = distanceTransform(handArea, x)
+    centerWrist, leftWrist, rightWrist, leftPoints, radio = getHandPoints(handArea, maxDistance, palmCenter, x, y)
+    initialLeft, finalLeft, initialRight, finalRight = thumbLinesPoints(palmCenter, centerWrist, leftWrist, radio, 1.5, 1)
+    leftPoints = leftPoints[1:]
+    fingers = len(leftPoints)
+    isThumb = thumb(handArea, initialLeft, finalLeft, initialRight, finalRight)
+    isIndex = None if fingers == 0 else index(leftPoints, palmCenter, centerWrist, leftWrist)
     
-    return None
+    features = []
+    if fingers == 5: # Palma
+        features = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+    elif fingers == 0: # Puño
+        features = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    elif isThumb and fingers == 2: # Chill
+        features = [1, 0, 0, 0, 1, 0, 1, 1, 1, 0]
+    elif not isThumb and fingers == 2: # Paz
+        features = [0, 1, 1, 0, 0, 1, 0, 0, 1, 1]
+    elif fingers == 4: # Classic 4
+        features = [0, 1, 1, 1, 1, 1, 0, 0, 0, 0]
+    elif isIndex and fingers == 3: # Classic 3
+        features = [0, 1, 1, 1, 0, 1, 0, 0, 0, 1]
+    elif not isIndex and fingers == 3: # Fine
+        features = [0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
+    else:
+        features = ['Imagen no apta']
+    huMoments =cv2.HuMoments(cv2.moments(outEdge))
+
+    for moment in huMoments:
+        features.append(moment[0])
+    
+    palmArea = np.pi*radio*radio
+    palmPerimeter = 2*np.pi*radio
+    perimeter = cv2.arcLength(outEdge, 1) # Perímetro
+    features.append(perimeter/palmPerimeter)
+    area = cv2.contourArea(outEdge) # Area
+    features.append(area/palmArea)
+    features.append(np.pi * area/(perimeter*perimeter)) # Redondez
+    features.append(perimeter*perimeter/area) # Compacidad
+    return features
+
+# Red neuronal
+
+def whichGesture(red, data):
+    max_values = [6.645803, 1, 1, 0.054815, 0.021134, 4.734428, 1, 1.2e-05, 1, 0.040994, 178.883129, 1, 1, 1, 1, 0.159799, 0.001943, 0.556775, 1, 1, 0.265885]
+    index = [17, 3, 6, 12, 15, 18, 0, 16, 7, 13, 20, 4, 2, 8, 5, 19, 14, 10, 9, 1, 11]
+    orderedData = []
+    for i in index:
+        orderedData.append(data[i])
+    orderedData = [np.array(orderedData)/max_values]
+    case = red.predict(orderedData)[0]
+    return case
