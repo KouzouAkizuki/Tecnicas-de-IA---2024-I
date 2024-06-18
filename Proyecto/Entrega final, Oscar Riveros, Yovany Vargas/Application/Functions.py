@@ -83,8 +83,6 @@ def getHand(original):
     return handArea, outEdge , x, y
 
 # Funciones para la extracción de características
-def handContour(hand, handArea):
-    return cv2.bitwise_and(cv2.bitwise_not(hand), handArea)
 
 def distanceTransform(img, x):
     outPut = cv2.distanceTransform(img, distanceType = cv2.DIST_L1, maskSize = 3)
